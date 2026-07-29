@@ -12,6 +12,47 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- CUSTOM CSS FOR BPJS KETENAGAKERJAAN THEME ---
+custom_css = """
+<style>
+    /* Tri-color BPJS Banner */
+    .bpjs-banner {
+        height: 8px;
+        width: 100%;
+        background: linear-gradient(90deg, #008C44 33.3%, #F6EA00 33.3%, #F6EA00 66.6%, #005C9A 66.6%);
+        margin-top: -10px;
+        margin-bottom: 25px;
+        border-radius: 4px;
+    }
+    
+    /* Custom styling for the primary 'Process' button (BPJS Green) */
+    div.stButton > button:first-child {
+        background-color: #008C44 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold;
+    }
+    div.stButton > button:first-child:hover {
+        background-color: #007036 !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Custom styling for the Download button (BPJS Blue) */
+    div.stDownloadButton > button:first-child {
+        background-color: #005C9A !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold;
+    }
+    div.stDownloadButton > button:first-child:hover {
+        background-color: #004777 !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
+# --------------------------------------------------
+
 # Supported Indonesian Months
 MONTHS = [
     "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", 
@@ -98,10 +139,10 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
 
 # --- UI LAYOUT ---
 
-st.title("📊 Rekap Automation Dashboard")
+st.title("Sistem Automasi Rekapitulasi Data")
+st.markdown('<div class="bpjs-banner"></div>', unsafe_allow_html=True)
 st.markdown("Upload your master Excel template and monthly PDF recaps below to process and merge data automatically.")
 
-st.divider()
 
 # Sidebar Setup
 st.sidebar.header("📁 Step 1: Upload Files")
