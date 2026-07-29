@@ -1,0 +1,7 @@
+[theme]
+# BPJS Ketenagakerjaan Theme Configuration
+primaryColor = "#008C44" # BPJS Green
+backgroundColor = "#FFFFFF" # Pure White
+secondaryBackgroundColor = "#F0F8F5" # Very light green-tinted gray for the sidebar
+textColor = "#31333F" # Dark Gray/Black for readable text
+font = "sans serif"
