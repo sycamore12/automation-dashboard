@@ -1,6 +1,7 @@
 import streamlit as st
 import pdfplumber
 import openpyxl
+from openpyxl.styles import PatternFill
 import pandas as pd
 import io
 import os
@@ -96,14 +97,14 @@ def extract_data_from_pdf_stream(pdf_file_bytes):
     return extracted_data
 
 def process_excel_update(excel_bytes, all_pdf_data, log_container):
-    """Updates the Excel file buffer with all extracted monthly data."""
+    """Updates the Excel file buffer with all extracted monthly data and highlights empty/0 cells."""
     wb = openpyxl.load_workbook(excel_bytes)
     sheet = wb.active
     
     total_updates = 0
     
+    # 1. Insert all the new data from the PDFs
     for month, data in all_pdf_data.items():
-        # Find column index for current month
         month_col_start = None
         for col in range(1, sheet.max_column + 1):
             cell_value = str(sheet.cell(row=1, column=col).value).strip().upper()
@@ -130,6 +131,25 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
                 
         total_updates += month_updates
         log_container.success(f"✅ Updated {month_updates} rows for **{month}**.")
+
+    # 2. Apply red background fill to empty or 0 cells under any month column
+    red_fill = PatternFill(start_color="FFFF0000", end_color="FFFF0000", fill_type="solid")
+    
+    for col in range(1, sheet.max_column + 1):
+        header_value = str(sheet.cell(row=1, column=col).value).strip().upper()
+        
+        if header_value in MONTHS:
+            # Found a month header. Iterate rows for both this column and the adjacent one.
+            for row in range(3, sheet.max_row + 1):
+                # Check Category 1 (JHT/JKK/JKM)
+                cell_1 = sheet.cell(row=row, column=col)
+                if cell_1.value is None or str(cell_1.value).strip() == "" or str(cell_1.value).strip() == "0":
+                    cell_1.fill = red_fill
+                    
+                # Check Category 2 (JKK/JKM)
+                cell_2 = sheet.cell(row=row, column=col + 1)
+                if cell_2.value is None or str(cell_2.value).strip() == "" or str(cell_2.value).strip() == "0":
+                    cell_2.fill = red_fill
         
     output_stream = io.BytesIO()
     wb.save(output_stream)
@@ -142,7 +162,6 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
 st.title("Sistem Automasi Rekapitulasi Data")
 st.markdown('<div class="bpjs-banner"></div>', unsafe_allow_html=True)
 st.markdown("Upload your master Excel template and monthly PDF recaps below to process and merge data automatically.")
-
 
 # Sidebar Setup
 st.sidebar.header("📁 Step 1: Upload Files")
