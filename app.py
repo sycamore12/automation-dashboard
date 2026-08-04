@@ -97,7 +97,7 @@ def extract_data_from_pdf_stream(pdf_file_bytes):
     return extracted_data
 
 def process_excel_update(excel_bytes, all_pdf_data, log_container):
-    """Updates the Excel file buffer with all extracted monthly data and highlights empty/0 cells."""
+    """Updates the Excel file buffer with all extracted monthly data and highlights empty/0 cells for existing codes."""
     wb = openpyxl.load_workbook(excel_bytes)
     sheet = wb.active
     
@@ -132,7 +132,7 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
         total_updates += month_updates
         log_container.success(f"✅ Updated {month_updates} rows for **{month}**.")
 
-    # 2. Apply red background fill to empty or 0 cells under any month column
+    # 2. Apply red background fill to empty or 0 cells ONLY if Kode Perisai exists
     red_fill = PatternFill(start_color="EA4335", end_color="EA4335", fill_type="solid")
     
     for col in range(1, sheet.max_column + 1):
@@ -141,6 +141,11 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
         if header_value in MONTHS:
             # Found a month header. Iterate rows for both this column and the adjacent one.
             for row in range(3, sheet.max_row + 1):
+                # Verify that this row actually has a Kode Perisai (Column 3)
+                kode_perisai_val = sheet.cell(row=row, column=3).value
+                if kode_perisai_val is None or str(kode_perisai_val).strip() == "":
+                    continue  # Skip highlighting if the row is completely unused
+                
                 # Check Category 1 (JHT/JKK/JKM)
                 cell_1 = sheet.cell(row=row, column=col)
                 if cell_1.value is None or str(cell_1.value).strip() == "" or str(cell_1.value).strip() == "0":
