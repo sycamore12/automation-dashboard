@@ -133,7 +133,7 @@ def process_excel_update(excel_bytes, all_pdf_data, log_container):
         log_container.success(f"✅ Updated {month_updates} rows for **{month}**.")
 
     # 2. Apply red background fill to empty or 0 cells under any month column
-    red_fill = PatternFill(start_color="FFFF0000", end_color="FFFF0000", fill_type="solid")
+    red_fill = PatternFill(start_color="EA4335", end_color="EA4335", fill_type="solid")
     
     for col in range(1, sheet.max_column + 1):
         header_value = str(sheet.cell(row=1, column=col).value).strip().upper()
