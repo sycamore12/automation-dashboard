@@ -58,6 +58,12 @@ MONTHS = [
     "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"
 ]
 
+MONTH_MAP = {
+    "01": "JANUARI", "02": "FEBRUARI", "03": "MARET", "04": "APRIL",
+    "05": "MEI", "06": "JUNI", "07": "JULI", "08": "AGUSTUS",
+    "09": "SEPTEMBER", "10": "OKTOBER", "11": "NOVEMBER", "12": "DESEMBER"
+}
+
 def get_month_from_filename(filename):
     upper_filename = filename.upper()
     for month in MONTHS:
@@ -150,22 +156,18 @@ def extract_daily_pdf_data(pdf_file_bytes):
     periode_string = "PERIODE TIDAK DITEMUKAN"
     
     with pdfplumber.open(pdf_file_bytes) as pdf:
-        # Extract the text from the first page to find the date period
         first_page_text = pdf.pages[0].extract_text()
         if first_page_text:
-            # Looks for format like: 01-02-2026 s/d 28-02-2026
             match = re.search(r"\d{2}-\d{2}-\d{4}\s*s/d\s*\d{2}-\d{2}-\d{4}", first_page_text)
             if match:
                 periode_string = match.group(0)
 
-        # Extract table data
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
                 if not table:
                     continue
                 for row in table:
-                    # Daily recap requires up to index 8 (LANJUTAN JKK/JKM)
                     if not row or len(row) < 9: 
                         continue
                     
@@ -191,11 +193,9 @@ def process_daily_excel_update(excel_bytes, extracted_data, periode_string, file
     wb = openpyxl.load_workbook(excel_bytes)
     sheet = wb.active
     
-    # Overwrite the PERIODE cell (Merged cell starts at E1)
     sheet['E1'] = periode_string
     
     updates = 0
-    # Daily template data starts at Row 4
     for row in range(4, sheet.max_row + 1):
         excel_kode = str(sheet.cell(row=row, column=3).value).strip() if sheet.cell(row=row, column=3).value else ""
         
@@ -214,13 +214,82 @@ def process_daily_excel_update(excel_bytes, extracted_data, periode_string, file
     return output_stream
 
 # ==========================================
+# TK AKTIF RECAP FUNCTIONS (NEW)
+# ==========================================
+def extract_tk_aktif_pdf_data(pdf_file_bytes):
+    extracted_data = {}
+    month_name = "BULAN TIDAK DITEMUKAN"
+    
+    with pdfplumber.open(pdf_file_bytes) as pdf:
+        # Extract period to get the month
+        first_page_text = pdf.pages[0].extract_text()
+        if first_page_text:
+            # Matches formats like "Periode 07-2026"
+            match = re.search(r"(?i)Periode\s+(\d{2})-\d{4}", first_page_text)
+            if match:
+                month_num = match.group(1)
+                month_name = MONTH_MAP.get(month_num, month_name)
+
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if not table:
+                    continue
+                for row in table:
+                    if not row or len(row) < 6: 
+                        continue
+                    
+                    # Column index 2 is KODE PERISAI based on new image
+                    kode_perisai = str(row[2]).strip() if row[2] else ""
+                    
+                    if kode_perisai.startswith("AB"):
+                        try:
+                            # Index 4: JUMLAH PENDAFTARAN (TK)
+                            # Index 5: JUMLAH KEPS AKTIF (TK)
+                            akuisisi = int(row[4]) if row[4] and str(row[4]).strip().isdigit() else 0
+                            tk_aktif = int(row[5]) if row[5] and str(row[5]).strip().isdigit() else 0
+                            
+                            extracted_data[kode_perisai] = {
+                                'AKUISISI': akuisisi,
+                                'TK_AKTIF': tk_aktif
+                            }
+                        except ValueError:
+                            continue
+                            
+    return month_name, extracted_data
+
+def process_tk_aktif_excel_update(excel_bytes, extracted_data, month_name, filename, log_container):
+    wb = openpyxl.load_workbook(excel_bytes)
+    sheet = wb.active
+    
+    # Overwrite the BULAN cell (E1) with the extracted month name
+    sheet['E1'] = month_name
+    
+    updates = 0
+    # TK Aktif template data starts at Row 3
+    for row in range(3, sheet.max_row + 1):
+        excel_kode = str(sheet.cell(row=row, column=3).value).strip() if sheet.cell(row=row, column=3).value else ""
+        
+        if excel_kode in extracted_data:
+            sheet.cell(row=row, column=5).value = extracted_data[excel_kode]['AKUISISI']
+            sheet.cell(row=row, column=6).value = extracted_data[excel_kode]['TK_AKTIF']
+            updates += 1
+            
+    output_stream = io.BytesIO()
+    wb.save(output_stream)
+    output_stream.seek(0)
+    
+    log_container.success(f"✅ Updated {updates} rows in `{filename}`.")
+    return output_stream
+
+# ==========================================
 # MAIN UI
 # ==========================================
 st.title("Sistem Automasi Rekapitulasi Data")
 st.markdown('<div class="bpjs-banner"></div>', unsafe_allow_html=True)
 
-# Create two tabs for the two different operations
-tab1, tab2 = st.tabs(["📅 Monthly Recap", "📝 Daily Recap (Per Wilayah)"])
+# Three tabs for the three different operations
+tab1, tab2, tab3 = st.tabs(["📅 Monthly Recap", "📝 Daily Recap", "📈 TK Aktif Recap"])
 
 # ------------------------------------------
 # TAB 1: MONTHLY RECAP
@@ -299,7 +368,6 @@ with tab2:
         else:
             log_box = st.container()
             
-            # 1. Extract data from the single PDF
             pdf_bytes = io.BytesIO(daily_pdf_file.read())
             periode_str, extracted_daily_data = extract_daily_pdf_data(pdf_bytes)
             
@@ -308,10 +376,7 @@ with tab2:
             if extracted_daily_data:
                 log_box.info(f"Extracted **{len(extracted_daily_data)}** records from `{daily_pdf_file.name}`.")
                 
-                # 2. Process each uploaded Excel template
                 st.success("🎉 Processing complete! Download your regional files below:")
-                
-                # Create columns for download buttons based on how many files were uploaded
                 download_cols = st.columns(len(daily_excel_files))
                 
                 for index, excel_file in enumerate(daily_excel_files):
@@ -324,10 +389,8 @@ with tab2:
                         log_box
                     )
                     
-                    # Generate a new filename (e.g., "UPDATED_Medan_Barat.xlsx")
                     new_filename = f"UPDATED_{excel_file.name}"
                     
-                    # Place a download button for each file in its own column
                     with download_cols[index]:
                         st.download_button(
                             label=f"📥 {new_filename}",
@@ -336,6 +399,64 @@ with tab2:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True,
                             key=f"dl_daily_{index}"
+                        )
+            else:
+                st.error("Could not extract any valid data from the provided PDF.")
+
+# ------------------------------------------
+# TAB 3: TK AKTIF RECAP
+# ------------------------------------------
+with tab3:
+    st.markdown("Upload your TK Aktif PDF recap and the 3 regional Excel templates (Kecamatan/Wilayah) to process data.")
+    
+    st.subheader("📁 Step 1: Upload Files (TK Aktif)")
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        tk_aktif_excel_files = st.file_uploader("Upload Regional Excel Templates (Max 3)", type=["xlsx"], accept_multiple_files=True, key="tk_aktif_excels")
+    with col_t2:
+        tk_aktif_pdf_file = st.file_uploader("Upload TK Aktif PDF Recap (Single)", type=["pdf"], accept_multiple_files=False, key="tk_aktif_pdf")
+
+    st.divider()
+
+    if st.button("🚀 Process TK Aktif Recap", type="primary", use_container_width=True, key="btn_tk_aktif"):
+        if not tk_aktif_excel_files or len(tk_aktif_excel_files) == 0:
+            st.error("Please upload the regional Excel template files.")
+        elif not tk_aktif_pdf_file:
+            st.error("Please upload the TK Aktif recap PDF file.")
+        else:
+            log_box = st.container()
+            
+            pdf_bytes = io.BytesIO(tk_aktif_pdf_file.read())
+            month_str, extracted_tk_aktif_data = extract_tk_aktif_pdf_data(pdf_bytes)
+            
+            log_box.info(f"Detected Bulan: **{month_str}**")
+            
+            if extracted_tk_aktif_data:
+                log_box.info(f"Extracted **{len(extracted_tk_aktif_data)}** records from `{tk_aktif_pdf_file.name}`.")
+                
+                st.success("🎉 Processing complete! Download your regional files below:")
+                download_cols = st.columns(len(tk_aktif_excel_files))
+                
+                for index, excel_file in enumerate(tk_aktif_excel_files):
+                    excel_bytes = io.BytesIO(excel_file.read())
+                    updated_stream = process_tk_aktif_excel_update(
+                        excel_bytes, 
+                        extracted_tk_aktif_data, 
+                        month_str, 
+                        excel_file.name, 
+                        log_box
+                    )
+                    
+                    new_filename = f"UPDATED_{excel_file.name}"
+                    
+                    with download_cols[index]:
+                        st.download_button(
+                            label=f"📥 {new_filename}",
+                            data=updated_stream,
+                            file_name=new_filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            key=f"dl_tk_aktif_{index}"
                         )
             else:
                 st.error("Could not extract any valid data from the provided PDF.")
